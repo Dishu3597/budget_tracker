@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}ExpenseTrackr{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='sidebar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='wlcm.css') }}">
+</head>
+<body>
+  <div class="page">
+    <aside class="sidebar-wrap">
+      {% include "sidebar.html" %}
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h2>Welcome,
+          <strong>
+            {{ session.user_name if session.user_name else 'User' }}
+          </strong>  👋
+        </h2>
+        <div class="topbar-right">
+          <button class="icon-btn" aria-label="Notifications">🔔</button>
+          <div class="avatar">
+            {{ session.user_name[0]|upper if session.user_name else 'U' }}
+          </div>
+        </div>
+      </header>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>
+
+

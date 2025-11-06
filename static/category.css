@@ -1,0 +1,35 @@
+.legend {
+  list-style: none;
+  padding: 0 16px;
+  margin-top: 10px;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 15px;
+  color: #333;
+}
+
+.legend li span.category-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+
+.seg-1 { background-color: #007bff; }
+.seg-2 { background-color: #ff4d4f; }
+.seg-3 { background-color: #00c853; }
+.seg-4 { background-color: #ff9800; }
+.seg-5 { background-color: #9c27b0; } 
+

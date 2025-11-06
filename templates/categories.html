@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+{% block title %}Categories · ExpenseTrackr{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='category.css') }}">
+{% set rows = rows | default([], true) %}
+{% set top  = top  | default([], true) %}
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Spending by Category</h3>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th># Txns</th>
+          <th class="amount-h">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          {% if r.total > 0 %}
+          <tr>
+            <td>{{ r.category }}</td>
+            <td>{{ r.count }}</td>
+            <td class="amount">₹{{ '%.2f'|format(r.total|default(0, true)) }}</td>
+          </tr>
+          {% endif %}
+        {% else %}
+          <tr><td colspan="3">No spending yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Top Spending Categories</h3>
+    <ul class="legend">
+      {% for r in top %}
+        {% if r.total > 0 %}
+        <li>
+          <span class="dot seg-{{ loop.index }}"></span>
+          {{ r.category }}
+          <b>₹{{ '%.2f'|format(r.total|default(0, true)) }}</b>
+        </li>
+        {% endif %}
+      {% else %}
+        <li>No spending yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endblock %}
+
+

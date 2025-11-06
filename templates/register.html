@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<h2>Create Account</h2>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="{{ url_for('register') }}">
+  <label>Name</label>
+  <input type="text" name="name" value="{{ prev.name if prev else '' }}" required>
+  <label>Email</label>
+  <input type="email" name="email" value="{{ prev.email if prev else '' }}" required>
+  <label>Password</label>
+  <input type="password" name="password" required>
+  <label>Confirm Password</label>
+  <input type="password" name="confirm" required>
+  <button type="submit">Register</button>
+</form>
+<p>Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+{% endblock %}

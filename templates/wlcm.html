@@ -1,0 +1,127 @@
+{% extends "layout.html" %}
+{% block title %}Dashboard · ExpenseTrackr{% endblock %}
+
+{% block content %}
+<section class="kpis">
+  <div class="kpi kpi-primary">
+    <span>Total Balance</span>
+    <form method="POST">
+      <input
+        type="number"
+        name="total_balance"
+        placeholder="Enter amount"
+        value="{{ total_balance or '' }}"
+      >
+      <button type="submit">Save</button>
+    </form>
+    {% if total_balance %}
+      <h2>${{ "%.2f"|format(total_balance) }}</h2>
+    {% endif %}
+  </div>
+
+
+  <div class="kpi kpi-accent">
+    <span>Total Spend</span>
+    <strong>${{ "%.2f"|format(total_spend) }}</strong>
+    <small>This month</small>
+  </div>
+
+  <div class="kpi kpi-light">
+    <span>Remaining Budget</span>
+    <strong>${{ "%.2f"|format(remaining) }}</strong>
+  </div>
+
+  <div class="kpi kpi-purple">
+    <span>% Saved</span>
+    <strong>{{ "%.0f"|format(percent_saved) }}%</strong>
+    <small>of your total budget</small>
+  </div>
+</section>
+
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Spending by Category</h3>
+    <div class="panel-body chart-row">
+      <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="Spending chart">
+        <circle class="donut-ring" cx="21" cy="21" r="15.915"></circle>
+
+        {# SVG donut segments from backend slices #}
+        {% for s in slices %}
+          <circle class="donut-segment {{ s.cls }}"
+                  cx="21" cy="21" r="15.915"
+                  stroke-dasharray="{{ s.dasharray }}"
+                  stroke-dashoffset="{{ s.offset }}">
+          </circle>
+        {% endfor %}
+
+        <g class="donut-text">
+          <text x="50%" y="50%" class="donut-value" text-anchor="middle" dy="0.3em">
+            ₹{{ '%.2f'|format(total_spend|default(0, true)) }}
+          </text>
+        </g>
+      </svg>
+
+      <ul class="legend">
+        {% for s in slices %}
+          <li>
+            <span class="dot {{ s.cls.split(' ')[1] }}"></span>
+            {{ s.label }} <b>{{ s.percent|round(0) }}%</b>
+          </li>
+        {% else %}
+          <li>No spending yet this month.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Recent Transactions</h3>
+
+    {% if grouped_recent %}
+      {% for cat, items in grouped_recent.items() %}
+        <h4 class="cat-heading">{{ cat }}</h4>
+        <table class="table compact">
+          <thead>
+            <tr><th>Date</th><th>Merchant</th><th class="amount-h">Amount</th></tr>
+          </thead>
+          <tbody>
+            {% for t in items %}
+              <tr>
+                <td>{{ t.date }}</td>
+                <td>{{ t.merchant }}</td>
+                <td class="amount">₹{{ '%.2f'|format(t.amount|default(0, true)) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    {% else %}
+      <p>No transactions yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Top Spending Categories</h3>
+    <table class="table">
+      <tbody>
+        {% for s in slices %}
+          <tr>
+            <td>
+              <span class="dot {{ s.cls.split(' ')[1] }}"></span> {{ s.label }}
+            </td>
+            <td class="amount">₹{{ '%.2f'|format(s.amount|default(0, true)) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="2">No spending yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<button class="fab" aria-label="Add">＋</button>
+{% endblock %}
+
