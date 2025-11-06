@@ -6,6 +6,7 @@ from flask import Flask, render_template, flash, redirect, request, session, url
 from flask_session import Session
 from cs50 import SQL
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.routing import BuildError
 
 app = Flask(__name__)
 app.secret_key = "dev"
@@ -102,35 +103,55 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+def _go_home():
+    """Safe redirect to your home page regardless of endpoint name."""
+    try:
+        return redirect(url_for("wlcm"))
+    except BuildError:
+        try:
+            return redirect(url_for("home"))
+        except BuildError:
+            return redirect("/")
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if session.get("user_id"):
-        return redirect(url_for("wlcm"))
+        return _go_home()
 
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
-        confirm = request.form.get("confirm") or ""
+        confirm  = request.form.get("confirm")  or ""
 
+        # validation
         if not name or not email or not password or not confirm:
-            return render_template("register.html", error="All fields are required.", prev={"name": name, "email": email})
+            return render_template("register.html",
+                                   error="All fields are required.",
+                                   prev={"name": name, "email": email})
         if password != confirm:
-            return render_template("register.html", error="Passwords do not match.", prev={"name": name, "email": email})
+            return render_template("register.html",
+                                   error="Passwords do not match.",
+                                   prev={"name": name, "email": email})
 
-        try:
-            hash_pw = generate_password_hash(password)
-            db.execute(
-                "INSERT INTO users (name, email, hash) VALUES (?, ?, ?)",
-                name, email, hash_pw
-            )
-        except Exception:
-            return render_template("register.html", error="Email already registered.", prev={"name": name, "email": email})
+        # unique email?
+        if db.execute("SELECT 1 FROM users WHERE email = ?", email):
+            return render_template("register.html",
+                                   error="Email already registered. Please log in.",
+                                   prev={"name": name, "email": email})
 
-        row = db.execute("SELECT id FROM users WHERE email = ?", email)
-        session["user_id"] = row[0]["id"]
-        session["user_name"] = row[0]["name"]
-        return redirect(url_for("wlcm"))
+        # create user
+        hash_pw = generate_password_hash(password)
+        db.execute("INSERT INTO users (name, email, hash) VALUES (?, ?, ?)",
+                   name, email, hash_pw)
+
+        # fetch id & name, log them in
+        row = db.execute("SELECT id, name FROM users WHERE email = ?", email)[0]
+        session.clear()
+        session["user_id"] = row["id"]
+        session["user_name"] = row["name"]
+        return _go_home()
 
     return render_template("register.html")
 
@@ -138,21 +159,27 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("user_id"):
-        return redirect(url_for("wlcm"))
+        return _go_home()
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
 
         if not email or not password:
-            return render_template("login.html", error="Please fill out all fields.", prev={"email": email})
+            return render_template("login.html",
+                                   error="Please fill out all fields.",
+                                   prev={"email": email})
 
-        rows = db.execute("SELECT * FROM users WHERE email = ?", email)
-        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], password):
-            return render_template("login.html", error="Invalid email or password.", prev={"email": email})
+        rows = db.execute("SELECT id, name, hash FROM users WHERE email = ?", email)
+        if not rows or not check_password_hash(rows[0]["hash"], password):
+            return render_template("login.html",
+                                   error="Invalid email or password.",
+                                   prev={"email": email})
 
+        session.clear()
         session["user_id"] = rows[0]["id"]
-        return redirect(url_for("wlcm"))
+        session["user_name"] = rows[0]["name"]
+        return _go_home()
 
     return render_template("login.html")
 
