@@ -17,8 +17,13 @@ Session(app)
 
 basedir = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(basedir, "expense.db")
-db = SQL(f"sqlite:///{DB_PATH}?check_same_thread=False")
 
+# 🔹 Create file BEFORE connecting
+if not os.path.exists(DB_PATH):
+    open(DB_PATH, 'a').close()
+
+# 🔹 Now safe to connect
+db = SQL(f"sqlite:///{DB_PATH}?check_same_thread=False")
 
 @app.before_request
 def ensure_schema():
