@@ -15,7 +15,9 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-db = SQL("sqlite:///expense.db")
+basedir = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(basedir, "expense.db")
+db = SQL(f"sqlite:///{DB_PATH}?check_same_thread=False")
 
 
 @app.before_request

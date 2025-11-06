@@ -1,8 +1,4 @@
 Flask
 Flask-Session
-cs50
-Werkzeug
 gunicorn
-Jinja2
-itsdangerous
-click
+cs50
