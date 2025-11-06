@@ -21,14 +21,9 @@ DB_PATH = os.path.join(basedir, "expense.db")
 if not os.path.exists(DB_PATH):
     open(DB_PATH, 'a').close()
 
-
 db = SQL(f"sqlite:///{DB_PATH}")
 
-@app.before_request
-def ensure_schema():
-    if not os.path.exists(DB_PATH):
-        open(DB_PATH, 'a').close()
-
+def init_db():
     db.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,8 +40,6 @@ def ensure_schema():
         )
     """)
 
-    for nm in ("Food", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"):
-        db.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", nm)
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
@@ -61,7 +54,10 @@ def ensure_schema():
             FOREIGN KEY(category_id) REFERENCES categories(id)
         )
     """)
-
+    for nm in ("Food", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"):
+        db.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", nm)
+with app.app_context():
+    init_db()
 
 @app.before_request
 def hydrate_user_name():
