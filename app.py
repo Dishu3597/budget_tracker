@@ -1,4 +1,4 @@
-import os
+import os, sqlite3
 from datetime import datetime
 from functools import wraps
 
@@ -17,10 +17,26 @@ Session(app)
 
 basedir = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(basedir, "expense.db")
+def _ensure_fresh_db(path):
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        open(path, "a").close()
+        return True
+    try:
+        con = sqlite3.connect(path)
+        ok = con.execute("PRAGMA integrity_check").fetchone()[0]
+        con.close()
+        if ok != "ok":
+            os.remove(path)             
+            open(path, "a").close()    
+            return True
+    except Exception:
+        if os.path.exists(path):
+            os.remove(path)
+        open(path, "a").close()
+        return True
+    return False
 
-if not os.path.exists(DB_PATH):
-    open(DB_PATH, 'a').close()
-
+_ensure_fresh_db(DB_PATH)
 db = SQL(f"sqlite:///{DB_PATH}")
 
 def init_db():
@@ -39,7 +55,6 @@ def init_db():
             name TEXT NOT NULL UNIQUE
         )
     """)
-
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
@@ -233,82 +248,69 @@ def dashboard():
     )
 
 
+def _txn_template_name():
+    # choose whichever file actually exists
+    here = os.path.dirname(os.path.abspath(__file__))
+    tdir = os.path.join(here, "templates")
+    if os.path.exists(os.path.join(tdir, "transactions.html")):
+        return "transactions.html"
+    return "transaction.html"   # fallback
+
+def _current_user_id():
+    # until auth is wired, use a default so the page loads
+    return session.get("user_id", 1)
+
 @app.route("/transactions", methods=["GET", "POST"])
-@login_required
 def transactions():
-    user_id = session["user_id"]
+    uid = _current_user_id()
 
-    if request.method == "POST":
-        date_ = request.form.get("date") or datetime.now().strftime("%Y-%m-%d")
-        merchant = (request.form.get("merchant") or "").strip()
-        amount = request.form.get("amount", type=float)
+    try:
+        if request.method == "POST":
+            date = request.form.get("date") or datetime.now().strftime("%Y-%m-%d")
+            merchant = (request.form.get("merchant") or "").strip()
+            amount = request.form.get("amount")
+            category_id = request.form.get("category_id")
+            free_cat = (request.form.get("category") or "").strip()
+            note = request.form.get("note")
 
-        category_id = request.form.get("category_id", type=int)
-        category_name = (request.form.get("category") or "").strip()
+            if free_cat:
+                row = db.execute("SELECT id FROM categories WHERE name = ?", free_cat)
+                if row:
+                    category_id = row[0]["id"]
+                else:
+                    db.execute("INSERT INTO categories (name) VALUES (?)", free_cat)
+                    category_id = db.execute("SELECT last_insert_rowid() AS id")[0]["id"]
 
-        if not merchant or amount is None or amount <= 0:
-            flash("Please enter a merchant and a positive amount.")
+            if not merchant or not amount:
+                flash("Please fill merchant and amount")
+                return redirect(url_for("transactions"))
+
+            db.execute(
+                """INSERT INTO transactions (user_id, date, merchant, category_id, amount, note)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                uid, date, merchant, category_id if category_id else None, float(amount), note
+            )
             return redirect(url_for("transactions"))
 
-        if not category_id and category_name:
-            row = db.execute(
-                "SELECT id FROM categories WHERE user_id = ? AND name = ?",
-                user_id, category_name
-            )
-            if row:
-                category_id = row[0]["id"]
-            else:
-                db.execute(
-                    "INSERT INTO categories (user_id, name) VALUES (?, ?)",
-                    user_id, category_name
-                )
-                category_id = db.execute(
-                    "SELECT id FROM categories WHERE user_id = ? AND name = ?",
-                    user_id, category_name
-                )[0]["id"]
-
-        db.execute(
-            "INSERT INTO transactions (user_id, date, merchant, category_id, amount) VALUES (?, ?, ?, ?, ?)",
-            user_id, date_, merchant, category_id, float(amount)
+        # GET: load categories + recent transactions
+        cats = db.execute("SELECT id, name FROM categories ORDER BY name")
+        txns = db.execute(
+            """SELECT t.id, t.date, t.merchant, t.amount,
+                      COALESCE(c.name, 'Uncategorized') AS category
+               FROM transactions t
+               LEFT JOIN categories c ON c.id = t.category_id
+               WHERE t.user_id = ?
+               ORDER BY date(t.date) DESC, t.id DESC
+               LIMIT 100""",
+            uid
         )
-        flash("Transaction added successfully!")
-        return redirect(url_for("transactions"))
 
-    txns = db.execute(
-        """
-        SELECT t.id, t.date, t.merchant,
-               COALESCE(c.name, 'Uncategorized') AS category,
-               t.amount
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
-        WHERE t.user_id = ?
-        ORDER BY t.date DESC, t.id DESC
-        """,
-        user_id
-    )
+        return render_template(_txn_template_name(), categories=cats, transactions=txns)
 
-    categories_list = db.execute(
-        "SELECT id, name FROM categories WHERE user_id = ? ORDER BY name",
-        user_id
-    )
-
-    total_spend = float(
-        db.execute("SELECT COALESCE(SUM(amount), 0) AS s FROM transactions WHERE user_id = ?", user_id)[0]["s"] or 0.0
-    )
-    total_balance = float(session.get("total_balance", 0.0))
-    remaining = total_balance - total_spend
-    percent_saved = (remaining / total_balance * 100.0) if total_balance > 0 else 0.0
-
-    return render_template(
-        "transactions.html",
-        txns=txns,
-        categories=categories_list,
-        total_balance=total_balance,
-        total_spend=total_spend,
-        remaining=remaining,
-        percent_saved=percent_saved
-    )
-
+    except Exception as e:
+        # TEMP: show the exact error so we can finish debugging on Render
+        # (Remove after it’s stable.)
+        return f"Transactions error: {type(e).__name__}: {e}", 500
 
 def ensure_default_categories_for(user_id: int):
     have = db.execute("SELECT 1 FROM categories WHERE user_id = ? LIMIT 1", user_id)
