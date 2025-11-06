@@ -23,7 +23,7 @@ db = SQL(f"sqlite:///{DB_PATH}?check_same_thread=False")
 @app.before_request
 def ensure_schema():
     if not os.path.exists(DB_PATH):
-    open(DB_PATH, 'a').close()
+        open(DB_PATH, 'a').close()
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS users (
