@@ -45,26 +45,36 @@
   color: #fff;
   border: 2px solid #fff;
 }
-/* Responsive layout */
-@media (max-width: 768px) {
-  body {
-    padding: 10px;
-    font-size: 16px;
+@media (max-width: 900px){
+  .page{ grid-template-columns: 1fr; } /* no side column by default */
+
+  /* Show hamburger */
+  .topbar .hamburger{ display: inline-block; }
+
+  /* Off-canvas sidebar */
+  .sidebar-wrap{
+    position: fixed; inset: 0 auto 0 0; /* left sheet */
+    width: 82%; max-width: 320px; height: 100dvh;
+    translate: -100% 0; transition: translate .25s ease;
+    background: #0e2a2a; color: #fff; z-index: 60;
+    box-shadow: 12px 0 24px rgba(0,0,0,.18);
+    overflow:auto;
   }
 
-  nav, header, .sidebar {
-    flex-direction: column;
-    align-items: center;
+  /* When open */
+  .page.sidebar-open .sidebar-wrap{ translate: 0 0; }
+
+  /* Optional dim background when open (using body or main overlay if you prefer) */
+  .page.sidebar-open::after{
+    content:""; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0,0,0,.35);
   }
 
-  table {
-    width: 100%;
-    display: block;
-    overflow-x: auto;
-  }
+  /* Make forms and inputs full-width on phones */
+  form{ display: grid; gap: 10px; }
+  input, select, button{ width: 100%; }
 
-  form input, form select, form button {
-    width: 100%;
-    box-sizing: border-box;
-  }
+  /* Tables scroll on phones */
+  .table-scroll{ overflow-x:auto; }
+  table{ min-width: 640px; }
 }

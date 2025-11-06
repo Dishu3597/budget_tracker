@@ -3,26 +3,32 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  
   <title>{% block title %}ExpenseTrackr{% endblock %}</title>
+
+  <!-- Your existing styles (order kept) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='sidebar.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='wlcm.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
-
 </head>
 <body>
   <div class="page">
-    <aside class="sidebar-wrap">
+    <aside class="sidebar-wrap" aria-label="Sidebar navigation">
       {% include "sidebar.html" %}
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <h2>Welcome,
-          <strong>
-            {{ session.user_name if session.user_name else 'User' }}
-          </strong>  👋
+        <!-- Mobile: hamburger to toggle sidebar -->
+        <button class="hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+          ☰
+        </button>
+
+        <h2 class="welcome">
+          Welcome,
+          <strong>{{ session.user_name if session.user_name else 'User' }}</strong> 👋
         </h2>
+
         <div class="topbar-right">
           <button class="icon-btn" aria-label="Notifications">🔔</button>
           <div class="avatar">
@@ -34,6 +40,41 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  <!-- Tiny JS: sidebar toggle on mobile -->
+  <script>
+    (function () {
+      const btn = document.querySelector('.hamburger');
+      const sidebar = document.querySelector('.sidebar-wrap');
+      const page = document.querySelector('.page');
+      if (!btn || !sidebar || !page) return;
+
+      const toggle = () => {
+        const open = page.classList.toggle('sidebar-open');
+        btn.setAttribute('aria-expanded', String(open));
+      };
+
+      btn.addEventListener('click', toggle);
+
+      // Close sidebar when clicking outside on small screens
+      document.addEventListener('click', (e) => {
+        if (!page.classList.contains('sidebar-open')) return;
+        const clickInside = sidebar.contains(e.target) || btn.contains(e.target);
+        if (!clickInside) {
+          page.classList.remove('sidebar-open');
+          btn.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      // Close if we resize to desktop
+      window.addEventListener('resize', () => {
+        if (window.innerWidth >= 900) {
+          page.classList.remove('sidebar-open');
+          btn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
 
