@@ -104,274 +104,105 @@ def login_required(f):
     return decorated_function
 
 
-@app.route("/")
-def index():
-    return render_template("wlcm.html")
+def _go_home():
+    """Safe redirect to your home page regardless of endpoint name."""
+    try:
+        return redirect(url_for("wlcm"))
+    except BuildError:
+        try:
+            return redirect(url_for("home"))
+        except BuildError:
+            return redirect("/")
 
-# ---------- REGISTER ----------
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if session.get("user_id"):
+        return redirect(url_for("wlcm"))
+        return _go_home()
+
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
         confirm = request.form.get("confirm") or ""
+        confirm  = request.form.get("confirm")  or ""
 
-        # Basic validation
+        # validation
         if not name or not email or not password or not confirm:
-            flash("Please fill all fields.")
-            return render_template("register.html", name=name, email=email)
+            return render_template("register.html", error="All fields are required.", prev={"name": name, "email": email})
+            return render_template("register.html",
+                                   error="All fields are required.",
+                                   prev={"name": name, "email": email})
         if password != confirm:
-            flash("Passwords do not match.")
-            return render_template("register.html", name=name, email=email)
+            return render_template("register.html", error="Passwords do not match.", prev={"name": name, "email": email})
 
-        # Unique email check
-        existing = db.execute("SELECT id FROM users WHERE email = ?", email)
-        if existing:
-            flash("Email already registered. Try logging in.")
-            return redirect(url_for("login"))
+        try:
+            hash_pw = generate_password_hash(password)
+            db.execute(
+                "INSERT INTO users (name, email, hash) VALUES (?, ?, ?)",
+                name, email, hash_pw
+            )
+        except Exception:
+            return render_template("register.html", error="Email already registered.", prev={"name": name, "email": email})
 
-        # Create user
-        user_hash = generate_password_hash(password)
-        db.execute("INSERT INTO users (name, email, hash) VALUES (?, ?, ?)", name, email, user_hash)
+        row = db.execute("SELECT id FROM users WHERE email = ?", email)
+        session["user_id"] = row[0]["id"]
+        session["user_name"] = row[0]["name"]
+        return redirect(url_for("wlcm"))
+            return render_template("register.html",
+                                   error="Passwords do not match.",
+                                   prev={"name": name, "email": email})
 
-        # Log in immediately
+        # unique email?
+        if db.execute("SELECT 1 FROM users WHERE email = ?", email):
+            return render_template("register.html",
+                                   error="Email already registered. Please log in.",
+                                   prev={"name": name, "email": email})
+
+        # create user
+        hash_pw = generate_password_hash(password)
+        db.execute("INSERT INTO users (name, email, hash) VALUES (?, ?, ?)",
+                   name, email, hash_pw)
+
+        # fetch id & name, log them in
         row = db.execute("SELECT id, name FROM users WHERE email = ?", email)[0]
+        session.clear()
         session["user_id"] = row["id"]
         session["user_name"] = row["name"]
-        flash("Registration successful!")
-        return redirect(url_for("index"))
+        return _go_home()
 
     return render_template("register.html")
 
-# ---------- LOGIN ----------
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if session.get("user_id"):
+        return redirect(url_for("wlcm"))
+        return _go_home()
+
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
 
         if not email or not password:
-            flash("Please enter email and password.")
-            return render_template("login.html")
+            return render_template("login.html", error="Please fill out all fields.", prev={"email": email})
+            return render_template("login.html",
+                                   error="Please fill out all fields.",
+                                   prev={"email": email})
 
         rows = db.execute("SELECT * FROM users WHERE email = ?", email)
         if len(rows) != 1 or not check_password_hash(rows[0]["hash"], password):
-            flash("Invalid email or password.")
-            return render_template("login.html")
+            return render_template("login.html", error="Invalid email or password.", prev={"email": email})
+        rows = db.execute("SELECT id, name, hash FROM users WHERE email = ?", email)
+        if not rows or not check_password_hash(rows[0]["hash"], password):
+            return render_template("login.html",
+                                   error="Invalid email or password.",
+                                   prev={"email": email})
 
+        session.clear()
         session["user_id"] = rows[0]["id"]
+        return redirect(url_for("wlcm"))
         session["user_name"] = rows[0]["name"]
-        flash("Welcome back!")
-        return redirect(url_for("index"))
+        return _go_home()
 
     return render_template("login.html")
-
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
-
-
-@app.route("/", methods=["GET", "POST"], endpoint="wlcm")
-@login_required
-def dashboard():
-    user_id = session["user_id"]
-
-    if request.method == "POST":
-        tb = request.form.get("total_balance", type=float)
-        session["total_balance"] = tb if tb is not None else 0.0
-
-    total_balance = float(session.get("total_balance", 0.0))
-
-    total_spend = float(
-        db.execute(
-            "SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE user_id = ?",
-            user_id
-        )[0]["s"] or 0.0
-    )
-    remaining = total_balance - total_spend
-    percent_saved = (remaining / total_balance * 100.0) if total_balance > 0 else 0.0
-
-    recent_rows = db.execute(
-        """
-        SELECT t.date,
-               t.merchant,
-               COALESCE(c.name, 'Uncategorized') AS category,
-               t.amount
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
-        WHERE t.user_id = ?
-        ORDER BY t.date DESC, t.id DESC
-        LIMIT 10
-        """,
-        user_id
-    )
-
-    grouped_recent = {}
-    for r in recent_rows:
-        cat = r["category"]
-        grouped_recent.setdefault(cat, []).append({
-            "date": r["date"],
-            "merchant": r["merchant"],
-            "amount": float(r["amount"] or 0.0),
-        })
-
-    cat_rows = db.execute(
-        """
-        SELECT COALESCE(c.name, 'Uncategorized') AS category,
-               COALESCE(SUM(t.amount), 0)       AS total
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
-        WHERE t.user_id = ?
-        GROUP BY COALESCE(c.name, 'Uncategorized')
-        ORDER BY total DESC
-        """,
-        user_id
-    )
-
-    total_sum = float(sum(r["total"] for r in cat_rows) or 1.0)
-    slices, offset = [], 25
-    cls_cycle = ["seg-1", "seg-2", "seg-3", "seg-4", "seg-5", "seg-6"]
-    for i, r in enumerate(cat_rows):
-        amt = float(r["total"] or 0.0)
-        pct = (amt * 100.0) / total_sum
-        slices.append({
-            "label": r["category"],
-            "amount": amt,
-            "percent": pct,
-            "dasharray": f"{pct:.0f} {100 - pct:.0f}",
-            "offset": offset,
-            "cls": f"donut-segment {cls_cycle[i % len(cls_cycle)]}",
-        })
-        offset += pct
-
-    return render_template(
-        "wlcm.html",
-        total_balance=total_balance,
-        total_spend=total_spend,
-        remaining=remaining,
-        percent_saved=percent_saved,
-        recent=recent_rows,
-        grouped_recent=grouped_recent,
-        slices=slices
-    )
-
-
-def _txn_template_name():
-    # choose whichever file actually exists
-    here = os.path.dirname(os.path.abspath(__file__))
-    tdir = os.path.join(here, "templates")
-    if os.path.exists(os.path.join(tdir, "transactions.html")):
-        return "transactions.html"
-    return "transaction.html"   # fallback
-
-def _current_user_id():
-    # until auth is wired, use a default so the page loads
-    return session.get("user_id", 1)
-
-@app.route("/transactions", methods=["GET", "POST"])
-def transactions():
-    uid = _current_user_id()
-
-    try:
-        if request.method == "POST":
-            date = request.form.get("date") or datetime.now().strftime("%Y-%m-%d")
-            merchant = (request.form.get("merchant") or "").strip()
-            amount = request.form.get("amount")
-            category_id = request.form.get("category_id")
-            free_cat = (request.form.get("category") or "").strip()
-            note = request.form.get("note")
-
-            if free_cat:
-                row = db.execute("SELECT id FROM categories WHERE name = ?", free_cat)
-                if row:
-                    category_id = row[0]["id"]
-                else:
-                    db.execute("INSERT INTO categories (name) VALUES (?)", free_cat)
-                    category_id = db.execute("SELECT last_insert_rowid() AS id")[0]["id"]
-
-            if not merchant or not amount:
-                flash("Please fill merchant and amount")
-                return redirect(url_for("transactions"))
-
-            db.execute(
-                """INSERT INTO transactions (user_id, date, merchant, category_id, amount, note)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                uid, date, merchant, category_id if category_id else None, float(amount), note
-            )
-            return redirect(url_for("transactions"))
-
-        # GET: load categories + recent transactions
-        cats = db.execute("SELECT id, name FROM categories ORDER BY name")
-        txns = db.execute(
-            """SELECT t.id, t.date, t.merchant, t.amount,
-                      COALESCE(c.name, 'Uncategorized') AS category
-               FROM transactions t
-               LEFT JOIN categories c ON c.id = t.category_id
-               WHERE t.user_id = ?
-               ORDER BY date(t.date) DESC, t.id DESC
-               LIMIT 100""",
-            uid
-        )
-
-        return render_template(_txn_template_name(), categories=cats, transactions=txns)
-
-    except Exception as e:
-        # TEMP: show the exact error so we can finish debugging on Render
-        # (Remove after it’s stable.)
-        return f"Transactions error: {type(e).__name__}: {e}", 500
-
-def ensure_default_categories_for(user_id: int):
-    have = db.execute("SELECT 1 FROM categories WHERE user_id = ? LIMIT 1", user_id)
-    if not have:
-        for nm in ("Food", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"):
-            db.execute("INSERT INTO categories (user_id, name) VALUES (?, ?)", user_id, nm)
-def fetch_categories():
-    return db.execute(
-        "SELECT id, name FROM categories WHERE user_id = ? ORDER BY name",
-        session.get("user_id", 1)
-    )
-
-
-@app.route("/categories")
-@login_required
-def categories():
-    user_id = session["user_id"]
-
-    rows = db.execute(
-        """
-        SELECT COALESCE(c.name, 'Uncategorized') AS category,
-               COALESCE(SUM(t.amount), 0)        AS total,
-               COUNT(t.id)                        AS count
-        FROM categories c
-        LEFT JOIN transactions t
-               ON t.category_id = c.id AND t.user_id = ?
-        GROUP BY COALESCE(c.name, 'Uncategorized')
-        ORDER BY total DESC
-        """,
-        user_id
-    )
-
-    grand_total = float(sum(r["total"] for r in rows) or 0.0)
-    top = rows[:5] 
-
-    return render_template(
-        "categories.html",
-        rows=rows,
-        top=top,
-        grand_total=grand_total
-    )
-
-
-
-
-if __name__ == "__main__":
-    app.debug = True
-    app.config["PROPAGATE_EXCEPTIONS"] = True
-
-    print("DB file path:", os.path.abspath("expense.db"))
-    print(app.url_map)
-    app.run(debug=True)
-
